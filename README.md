@@ -42,7 +42,11 @@ zappa undeploy <staging/production>
 
 Create a new shortened URL. The webhook paramater here is optional.
 ```sh
-curl -XPOST '<short_url_domain>/c' -d '{"path": "shortpath", "webhook": "https://f81421ad32aa6b3f557cec14301e1296.m.pipedream.net?id=idtotrack", "redirect_url": "https://google.com"}' -H "content-type: application/json"
+curl -XPOST '<short_url_domain>/c' -d '{
+	"path": "shortpath",
+	"webhook": "https://f81421ad32aa6b3f557cec14301e1296.m.pipedream.net?id=idtotrack",
+	"redirect_url": "https://google.com"
+}' -H "content-type: application/json"
 ```
 Retrieve the original URL from the short url
 ```sh

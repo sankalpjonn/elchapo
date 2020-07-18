@@ -1,0 +1,18 @@
+{
+    "staging": {
+        "s3_bucket": "dev-zappa-1-us",
+        "aws_region": "us-east-1",
+        "app_function": "app.app",
+        "environment_variables": {
+          "ENVIRONMENT": "staging"
+        }
+    },
+    "prod": {
+        "s3_bucket": "dev-zappa-1-us",
+        "aws_region": "us-east-1",
+        "app_function": "app.app",
+        "environment_variables": {
+          "ENVIRONMENT": "production"
+        }
+    }
+}

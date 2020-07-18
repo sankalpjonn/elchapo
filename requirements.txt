@@ -1,0 +1,9 @@
+zappa==0.48.2
+pynamodb==4.3.2
+python-dateutil==2.6.1
+base58==0.2.4
+boto3==1.4.7
+botocore==1.12.54
+boto==2.38.0
+Flask==1.1.2
+pytz

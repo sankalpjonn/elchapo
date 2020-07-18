@@ -4,7 +4,7 @@ A serverless URL shortener that uses zappa to package a python/flask applicaiton
 
 ## Setup
 
-create virtual environment
+Create virtual environment
 ```sh
 virtualenv venv
 ```
@@ -20,7 +20,7 @@ pip install -r requirements.txt
 
 ## Deployment
 
-create an AWS account if you dont have one already and retrieve - public key and private key and then configure aws account on your terminal
+Create an AWS account if you dont have one already and retrieve - public key and private key and then configure aws account on your terminal
 ```sh
 aws configure
 ```
@@ -29,11 +29,11 @@ Refer to zappa_settings.json and change the parameters accoring to your applicat
 ```sh
 zappa deploy <staging/production>
 ```
-you can now configure your short url domain to route all requests to the URL that is given by zappa in the above step. If you have to update the application, run
+You can now configure your short url domain to route all requests to the URL that is given by zappa in the above step. If you have to update the application, run
 ```sh
 zappa update <staging/production>
 ```
-And to delete the deployment run
+To delete the deployment run
 ```sh
 zappa undeploy <staging/production>
 ```

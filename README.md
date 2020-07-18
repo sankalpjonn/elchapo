@@ -4,15 +4,15 @@ A serverless URL shortener that uses zappa to package a python/flask applicaiton
 
 ## Setup
 
-- create virtual environment
+create virtual environment
 ```sh
 virtualenv venv
 ```
-- Activate virtual environment
+Activate virtual environment
 ```sh
 source venv/bin/activate
 ```
-- Install dependencies
+Install dependencies
 ```sh
 pip install -r requirements.txt
 ```
@@ -20,39 +20,31 @@ pip install -r requirements.txt
 
 ## Deployment
 
-- create an AWS account if you dont have one already and retrieve - public key and private key
-
-- configure aws account on your terminal using the keys generated from step 1
+create an AWS account if you dont have one already and retrieve - public key and private key and then configure aws account on your terminal
 ```sh
 aws configure
 ```
 
-- Refer to zappa_settings.json and change the parameters accoring to your application.
-
-- deploy your zappa application
+Refer to zappa_settings.json and change the parameters accoring to your application. You are now ready to deploy the application.
 ```sh
 zappa deploy <staging/production>
 ```
-- you can configure your short url domain to route all requests to the URL that is given by zappa in the above step.
-
-- If you have to update the application
+you can now configure your short url domain to route all requests to the URL that is given by zappa in the above step. If you have to update the application, run
 ```sh
 zappa update <staging/production>
 ```
-
-- To delete the deployment run
+And to delete the deployment run
 ```sh
 zappa undeploy <staging/production>
 ```
 
 ## Usage
 
-- To create a new shortened URL
+Create a new shortened URL. The webhook paramater here is optional.
 ```sh
 curl -XPOST '<short_url_domain>/c' -d '{"path": "shortpath", "webhook": "https://f81421ad32aa6b3f557cec14301e1296.m.pipedream.net?id=idtotrack", "redirect_url": "https://google.com"}' -H "content-type: application/json"
 ```
-The webhook paramater here is optional.
-- To retrieve the original URL from the short url
+Retrieve the original URL from the short url
 ```sh
 curl '<short_url_domain>/shortpath'
 ```

@@ -1,6 +1,4 @@
-# El Chapo
-
-A serverless URL shortener that uses zappa to package a python/flask applicaiton into an AWS Lambda + API Gateway application while using AWS DynamoDB as the data store.
+![El Chapo](https://cdn.shopify.com/s/files/1/0070/3666/5911/files/el_chapo_1.png?v=1595129943)
 
 ## Setup
 
@@ -25,7 +23,7 @@ Create an AWS account if you dont have one already and retrieve - public key and
 aws configure
 ```
 
-Refer to zappa_settings.json and change the parameters accoring to your application. You are now ready to deploy the application.
+Refer to zappa_settings.json and change the parameters accoring to your application. You are now ready to deploy the application to staging and production.
 ```sh
 zappa deploy <staging/production>
 ```

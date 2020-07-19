@@ -1,4 +1,4 @@
-![El Chapo](https://cdn.shopify.com/s/files/1/0070/3666/5911/files/el_chapo_1.png?v=1595129943)
+![El Chapo](https://uploads-ssl.webflow.com/5e0b0187743608fe07eecd0a/5f13d06c791ec9206e4d0ef7_el%20chapo%20(3).png)
 
 ## Setup
 

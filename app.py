@@ -56,15 +56,14 @@ def get_hook(webhook, path):
 @app.route('/<path:path>', methods=['GET'])
 def redirect_url(path):
     try:
-        sort = ShortURL.get(path)
-        sort.is_clicked = True
+        short_url = ShortURL.get(path)
         webhook = WEBHOOK
-        if sort.webhook:
-            webhook = sort.webhook
+        if short_url.webhook:
+            webhook = short_url.webhook
         webhook = get_hook(webhook, path)
         if webhook:
             call_url(webhook)
-        return redirect(sort.redirection_url, code=302)
+        return redirect(short_url.redirection_url, code=302)
     except ShortURL.DoesNotExist:
         return redirect(NOT_FOUND_URL, code=302)
 

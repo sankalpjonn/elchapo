@@ -31,7 +31,6 @@ class ShortURL(Model):
 
     url = UnicodeAttribute(hash_key=True, null=False)
     redirection_url = UnicodeAttribute(null=False)
-    is_clicked = BooleanAttribute(default=False)
     webhook = UnicodeAttribute(null=True)
     created_at = UTCDateTimeAttribute(default=get_now())
 

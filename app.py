@@ -1,10 +1,10 @@
 import logging
 
-import requests
+import requests, os
 from flask import Flask, redirect, jsonify
 from flask import request
 
-from constants import WEBHOOK, NOT_FOUND_URL
+from constants import WEBHOOK, NOT_FOUND_URL, SECRET_KEY
 from models import ShortURL
 from zappa.asynchronous import task
 
@@ -26,10 +26,18 @@ def after_request(response):
 @app.route('/c', methods=['POST'])
 def create_url():
     path = request.json['path']
+    secret_key = request.json.get("secret_key")
     redirect_url = request.json['redirect_url']
     webhook = request.json.get('webhook', None)
-    ShortURL(url=path, redirection_url=redirect_url, webhook=webhook).save()
-    return jsonify(success=True), 200
+    if secret_key != SECRET_KEY:
+        return "", 403
+    try:
+        ShortURL.get(path)
+        return "", 409
+    except ShortURL.DoesNotExist:
+        ShortURL(url=path, redirection_url=redirect_url, webhook=webhook).save()
+        return jsonify(success=True), 200
+    return "", 400
 
 
 @task
@@ -65,7 +73,7 @@ def redirect_url(path):
             call_url(webhook)
         return redirect(short_url.redirection_url, code=302)
     except ShortURL.DoesNotExist:
-        return redirect(NOT_FOUND_URL, code=302)
+        return jsonify(error="Not found"), 404
 
 
 # We only need this for local development.

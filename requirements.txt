@@ -20,7 +20,7 @@ MarkupSafe==2.0.1
 pep517==0.12.0
 pip-tools==6.4.0
 placebo==0.10.0
-pynamodb==5.2.0
+pynamodb==5.5.0
 python-dateutil==2.8.2
 python-slugify==5.0.2
 pytz==2021.3

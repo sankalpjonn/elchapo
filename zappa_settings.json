@@ -1,18 +1,20 @@
 {
-    "staging": {
-        "s3_bucket": "dev-zappa-1-us",
-        "aws_region": "us-east-1",
-        "app_function": "app.app",
-        "environment_variables": {
-          "ENVIRONMENT": "staging"
-        }
-    },
-    "production": {
-        "s3_bucket": "dev-zappa-1-us",
-        "aws_region": "us-east-1",
-        "app_function": "app.app",
-        "environment_variables": {
-          "ENVIRONMENT": "production"
-        }
-    }
+  "staging": {
+      "s3_bucket": "staging-zappa-1-us",
+      "aws_region": "us-east-1",
+      "app_function": "app.app",
+      "environment_variables": {
+        "ENVIRONMENT": "staging",
+        "SECRET_KEY": "DCCOMICS"
+      }
+  },
+  "production": {
+      "s3_bucket": "prod-zappa-1-us",
+      "aws_region": "us-east-1",
+      "app_function": "app.app",
+      "environment_variables": {
+        "ENVIRONMENT": "production",
+        "SECRET_KEY": "batman-beats-superman-any-day"
+      }
+  }
 }

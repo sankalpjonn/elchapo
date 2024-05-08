@@ -76,6 +76,10 @@ def redirect_url(path):
         return jsonify(error="Not found"), 404
 
 
+@app.route('/', methods=['GET'])
+def testing_this_url():
+    return "sucess", 200
+
 # We only need this for local development.
 if __name__ == '__main__':
     MAIN = True

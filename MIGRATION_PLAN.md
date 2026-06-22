@@ -123,31 +123,47 @@ minute's average; true sub-minute peaks are likely somewhat higher.
 
 ---
 
-## TTL design — the key decision
+## TTL design — LOCKED (ENGG-180)
 
-The original question was "what's the oldest DynamoDB row still being accessed, so
-we can set a TTL?" **That can't be answered from current data:**
-1. Schema has no last-accessed field — DynamoDB only knows `created_at`, never
-   when a link was last clicked.
-2. No DynamoDB read perms on these creds (Scan/Query/DescribeTable → AccessDenied).
-3. Prod Lambda logs: 1-day retention, 0 bytes stored, newest streams stale (Sep
-   2024). No history to mine for which old links still get hit.
+**Decision (locked 2026-06-22): 3-month TTL.** Two parts:
 
-**The Go rewrite makes this moot — use a sliding TTL instead of a fixed one:**
-- Add a `ttl` attribute (Number, epoch seconds) and enable DynamoDB native TTL on it.
-- On every `GET /<path>` redirect, set `ttl = now + N days` (e.g. N=90). Optionally
-  also write `last_accessed`.
-- Result: any link that's still clicked auto-extends and never expires; only links
-  dormant for N days get reaped by DynamoDB TTL. The bill sheds dead rows without
-  ever breaking a live link — and we never needed the historical "oldest accessed"
-  number. Pick N conservatively (90d is safe); it can be tuned later once
-  `last_accessed` data accumulates.
-- Backfill: existing rows have no `ttl`. Decide a one-time backfill (e.g. set
-  `ttl = created_at + N days`, or a longer grace for legacy rows) so old rows
-  eventually expire. **Risk:** a backfill that's too aggressive could expire a
-  still-used legacy link before it gets re-clicked. Prefer a long initial grace.
-- The sliding update is a cheap conditional `UpdateItem` per redirect; only update
-  when the stored ttl is > ~1 day old to avoid a write on every single hit.
+1. **New objects, going forward:** every `POST /c` create sets a `ttl` attribute
+   (Number, epoch seconds) = `created_at + 90 days`. Enable DynamoDB native TTL on
+   the `ttl` attribute. New rows then auto-expire at 3 months for free (TTL deletes
+   cost no WCU). This caps future table growth.
+2. **Old backlog (the 892M existing rows with no `ttl`):** run a one-time cleanup
+   **script** to delete them. TTL only acts on rows that *have* a `ttl`, so the
+   historical rows must be handled explicitly.
+
+**Why 3 months specifically:** at ~21M creates/month and ~255 billed bytes/row,
+3 months ≈ 63M rows ≈ 16 GB — under the 25 GB always-free storage tier, so storage
+cost → ~$0. The window can be anything up to ~4.7 months (~98M rows) and still stay
+free; 3 months leaves comfortable headroom for traffic growth. See
+[[elchapo_cost_breakdown]].
+
+**What TTL does / doesn't touch:**
+- Storage ($49/mo → ~$0): genuinely reclaimed when rows are deleted. DynamoDB is NOT
+  Postgres — no bloat/VACUUM, no drop-recreate needed; `TableSizeBytes` (and the
+  100-byte/row overhead) drop within a ~6h metering cycle. Partition count doesn't
+  shrink but that's throughput-only, not billed storage.
+- Writes (~$13/mo): UNCHANGED. Driven by ~21M creates/month (traffic), not table
+  size. This is the irreducible DynamoDB floor (~$14/mo incl. reads).
+
+**Backlog cleanup cost / options (decide before running):**
+- Delete script (`BatchWriteItem`) OR backfill `ttl` then let TTL delete: **either is
+  ~892M writes ≈ ~$1,100 one-time** (1 WCU/row; TTL's own deletes are free, but
+  stamping the attribute costs the same as deleting). Storage saves ~$49/mo →
+  ~22-month payback.
+- Only FREE option: `DeleteTable` + recreate — but nukes the ~2% of old links still
+  being clicked (→ 404s). Viable only if that's acceptable, or migrate just the
+  recently-active subset first.
+- Whichever: throttle the script so the ~892M deletes don't spike on-demand write
+  cost / starve live `POST /c` traffic.
+
+> NOTE: project direction pivoted to the **cheap cost-fix** (drop API Gateway via
+> Lambda Function URL + this TTL), NOT the Go/EC2 rewrite — Lambda is only ~$5/mo.
+> See [[project_state_go_migration]] / [[elchapo_cost_breakdown]]. The Go-rewrite
+> material below is retained for reference only.
 
 ---
 

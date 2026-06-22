@@ -28,7 +28,8 @@
       ],
       "environment_variables": {
         "ENVIRONMENT": "production",
-        "SECRET_KEY": "batman-beats-superman-any-day"
+        "SECRET_KEY": "batman-beats-superman-any-day",
+        "TTL_DAYS": "180"
       }
   }
 }

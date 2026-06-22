@@ -149,15 +149,22 @@ free; 3 months leaves comfortable headroom for traffic growth. See
 - Writes (~$13/mo): UNCHANGED. Driven by ~21M creates/month (traffic), not table
   size. This is the irreducible DynamoDB floor (~$14/mo incl. reads).
 
-**Backlog cleanup cost / options (decide before running):**
+**Backlog cleanup cost / options (decide before running) — figures verified vs AWS
+docs 2026-06-22, at CURRENT us-east-1 on-demand pricing $0.625/M writes, $0.125/M
+reads (AWS halved throughput pricing Nov 2024; confirmed by the actual bill: 21M
+writes = $13.15/mo = $0.625/M):**
 - Delete script (`BatchWriteItem`) OR backfill `ttl` then let TTL delete: **either is
-  ~892M writes ≈ ~$1,100 one-time** (1 WCU/row; TTL's own deletes are free, but
-  stamping the attribute costs the same as deleting). Storage saves ~$49/mo →
-  ~22-month payback.
-- Only FREE option: `DeleteTable` + recreate — but nukes the ~2% of old links still
-  being clicked (→ 404s). Viable only if that's acceptable, or migrate just the
-  recently-active subset first.
-- Whichever: throttle the script so the ~892M deletes don't spike on-demand write
+  ~892M writes ≈ ~$558 one-time** (1 WRU/row; TTL's own deletes are free, but stamping
+  the attribute costs the same as deleting). + a full Scan to find rows ≈ ~$56 (each
+  small item rounds to 4 KB = 0.5 RRU; reads are cheap vs the deletes). Storage saves
+  ~$49/mo → ~11-month payback. (~$558 assumes no GSI and items <1 KB; a GSI or >1 KB
+  items scale it up.)
+- Only FREE option: `DeleteTable` + recreate — **verified: AWS does not charge for
+  DeleteTable regardless of row count/size.** But it nukes the ~2% of old links still
+  clicked (→ 404s). Make it safe via lazy copy-forward: new TTL table v2, migrate old
+  links into v2 on read, then `DeleteTable` v1 after a ~90-day grace → free reclaim,
+  no lost active links, no Scan, no per-row delete cost.
+- Whichever paid path: throttle the script so the ~892M writes don't spike on-demand
   cost / starve live `POST /c` traffic.
 
 > NOTE: project direction pivoted to the **cheap cost-fix** (drop API Gateway via

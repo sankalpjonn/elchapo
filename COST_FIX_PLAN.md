@@ -119,31 +119,45 @@ never assigns it, so the `path` query param is silently dropped today.
 
 ## Goal 2 — Django direct `PutItem` into v2
 
-Change `URLShortener.get_url()` in **both** repos (`shared_inbox_server` and
-`shared_inbox_server-flexype`) — every call site funnels through this one method, so it's a
-single-method change per repo.
+Change `URLShortener.get_url()` in **`shared_inbox_server`** — every call site funnels
+through this one method, so it's a single-method change. Build it in a **new worktree/branch
+off `pre_prod`**. (NOTE: this is ONE repo / one deployment. The local
+`shared_inbox_server-flexype` folder is the *same* GitHub repo checked out on `dev`, not a
+separate fork — verified via identical `origin` — so there is nothing to change there.)
 
 Replace `requests.post(SHORT_URL_BASE_URL + 'c', …)` with:
 
 ```python
-import boto3, botocore, time
+import boto3, time
+from datetime import datetime, timezone
 _ddb = boto3.client("dynamodb", region_name="us-east-1")  # pin region; uses the prod.env key
 
+# Kill-switch is an ENV VAR (not a DB flag) so the create path stays a single put,
+# no extra read. When off, fall through to the existing requests.post(.../c) path.
+if not settings.USE_DIRECT_DYNAMO_WRITE:
+    ... existing requests.post(SHORT_URL_BASE_URL + 'c', ...) ...
+
 # inside the retry loop, with a freshly generated `path`:
-expires_at = int(time.time()) + 90 * 24 * 3600
-# Grace-period only: also dup-check v1 so a new random path can't collide with a
-# legacy path and hijack an old link's destination. Remove this read once v1 is deleted.
+expires_at = int(time.time()) + settings.SHORT_URL_TTL_DAYS * 24 * 3600   # prod 180 / stg+default 90
+# pynamodb 6.0.0 deserializes this on EVERY redirect (ShortURLV2.get) -> MUST be exactly
+# this format; isoformat (+00:00), `Z`, or missing microseconds all raise on read (verified).
+created_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f%z")  # 2026-..T..+0000
+
+# Grace-period only: dup-check v1 so a new random path can't hijack a legacy link.
+# Remove this read once v1 is deleted.
 if _ddb.get_item(TableName=V1_TABLE, Key={"url": {"S": path}}).get("Item"):
     raise Collision  # -> regenerate path, retry
+
+item = {
+    "url": {"S": path},
+    "redirection_url": {"S": self.redirect_url},
+    "created_at": {"S": created_at},
+    "expires_at": {"N": str(expires_at)},
+}
+if self.webhook:                 # OMIT when absent (mirror pynamodb null=True), don't write NULL
+    item["webhook"] = {"S": self.webhook}
 _ddb.put_item(
-    TableName=V2_TABLE,
-    Item={
-        "url": {"S": path},
-        "redirection_url": {"S": self.redirect_url},
-        "webhook": {"S": self.webhook} if self.webhook else {"NULL": True},
-        "created_at": {"S": now_iso},
-        "expires_at": {"N": str(expires_at)},
-    },
+    TableName=V2_TABLE, Item=item,
     ConditionExpression="attribute_not_exists(#u)",
     ExpressionAttributeNames={"#u": "url"},
 )
@@ -161,15 +175,26 @@ Notes:
 - Preserve current failure behavior: on exhausted retries `get_url()` returns `None`; the
   message-send flow must not break on shortener failure.
 
-**Tasks**
-- [ ] [Sankalp] Identify the IAM user that owns `AKIAUZWV65Y5QP2OL5W6` (IAM console → Users
-      → search that key id) and attach the policy below.
-- [ ] [Claude] Rewrite `URLShortener.get_url()` in `shared_inbox_server` and
-      `shared_inbox_server-flexype`; add `V1_TABLE`/`V2_TABLE` settings.
-- [ ] Roll out to a canary instance / staging first; confirm links create + resolve.
-- [ ] Deploy to the full fleet (incl. the spot autoscaling group — it inherits the same
-      `prod.env` key, so no per-instance work).
-- [ ] Watch API Gateway `Count` drop toward the redirect-only floor (~95K/mo).
+**Tasks (A / B / C — updated 2026-06-22)**
+- [x] **B (IAM):** scoped `PutItem`+`GetItem` policy (below) on
+      `{staging,production}-el-chapo-short-url-store*` attached to `api-access-user` — **DONE
+      & proven live** by the direct-`put_item` benchmark from the rq box (5000/5000 ok,
+      p50 ~11ms / p99 ~66ms, zero throttle). No further IAM work.
+- [ ] **A0:** resolve/create the **Jira ticket** (NFR project — cost/perf work).
+- [ ] **A1:** worktree + branch off `pre_prod` (`feature/<slug>-<JIRA-ID>`).
+- [ ] **A2:** env config — `V1_TABLE`/`V2_TABLE`, `SHORT_URL_TTL_DAYS` (prod 180 / staging 90 /
+      default 90), `USE_DIRECT_DYNAMO_WRITE` (default off); `staging.env=true`, `prod.env=false`.
+- [ ] **A3:** rewrite `URLShortener.get_url()` (boto3, conditional put, grace v1 dup-check,
+      pinned `created_at` format, omit-webhook-when-absent, flag-gated, `None` on exhausted retries).
+- [ ] **A4:** TDD incl. a `created_at` round-trip through pynamodb 6.0.0 `UTCDateTimeAttribute`.
+- [ ] **C1:** deploy branch to **staging** (merge→`dev`, run migration check).
+- [ ] **C2:** canary verify on staging — create → redirect **through the Lambda** → 302 + row in v2.
+- [ ] **C3:** raise **PR: feature → `pre_prod`** (Jira ID in title/branch/commits; diff-confirm gate).
+- [ ] **C4:** PR artifacts — `pr_docs/<JIRA-ID>-<slug>.md` (AI) + human PR description + layman
+      `#dev-pull-requests` post tagging `@backend-team`, sent directly.
+- [ ] **Downstream (Sankalp, later — out of this effort's scope):** merge `pre_prod`→`master`
+      prod deploy, flip `USE_DIRECT_DYNAMO_WRITE=true` in prod, watch API GW `Count` fall to the
+      redirect-only floor (~95K/mo).
 
 **IAM policy for the Django user** (tight — just these tables, just Get/Put; prefix `*`
 covers v1, v2, and a future v3 so we don't re-edit IAM mid-migration):
@@ -198,7 +223,7 @@ covers v1, v2, and a future v3 so we don't re-edit IAM mid-migration):
 | **0** | Pre-create `v2` (prod+staging) + enable TTL on `expires_at` | Sankalp | yes (drop v2) |
 | **1** | Deploy Lambda copy-forward (v2-first read, v1 fallback+copy, metric, get_hook fix, v2 writes) | Claude → Sankalp deploys | yes (revert zappa) |
 | **2** | Verify redirects work for both legacy and v2 links; metric flowing | both | — |
-| **3** | Attach Django IAM policy; ship `URLShortener` direct-write to staging, then canary, then fleet | Sankalp + Claude | yes (revert to `requests.post`) |
+| **3** | (IAM ✅ done) ship `URLShortener` direct-write to staging → canary → **PR into `pre_prod`** (no direct prod deploy from this effort; prod cutover is downstream) | Claude | yes (revert to `requests.post`) |
 | **4** | Monitor: API GW `Count` falls to redirect-only; `ActiveLinkAgeDays` age + discovery curves | both | — |
 | **5** | **Grace period** — keep v1 as read-only fallback while legacy links get copied forward on click | — | — |
 | **6** | When exit criteria met: `DeleteTable` v1 (free); remove the v1 dup-check from Django and the v1 fallback from Lambda | Sankalp + Claude | **no** (v1 gone) |
@@ -237,16 +262,22 @@ storage for the extra months — so we err toward a safe, data-driven cutoff rat
 ---
 
 ## Decisions locked
-- TTL attribute name: **`expires_at`**.
-- TTL math: copy-forward uses **`now + 90d`** (preserve `created_at` for the metric only).
-- **No sliding refresh** — hard 3-month expiry from creation/copy-forward.
+- TTL attribute name: **`expires_at`** (epoch **SECONDS**).
+- TTL window is **env-driven** (`SHORT_URL_TTL_DAYS` for Django / `TTL_DAYS` for the Lambda):
+  **prod = 180d**, staging + default = 90d. (Prod bumped 90→180 on 2026-06-22; covers ~99th pct
+  of clicked-legacy-link ages.)
+- **No sliding refresh** — hard expiry from creation/copy-forward.
+- Goal 2 write uses **boto3** (no new library). Kill-switch = **`USE_DIRECT_DYNAMO_WRITE` env var**
+  (not a DB flag — avoids an extra read per create).
+- Django `created_at` MUST be written as `%Y-%m-%dT%H:%M:%S.%f%z` (tz-aware UTC) — pynamodb 6.0.0
+  rejects isoformat/`Z`/no-microseconds on `ShortURLV2.get()` (verified).
+- Goal 2 is **one repo** (`shared_inbox_server`); `-flexype` is the same repo on `dev`, not a target.
 
 ## Open items / decisions to confirm
 
-- [ ] Confirm the IAM user behind `AKIA…` and whether to *also* take this chance to plan
-      rotating that long-lived key / moving Django to the instance role (separate effort;
-      noted because the key sits in `prod.env` in plaintext).
-- [ ] Grace-period length and whether to drive Phase 6 purely off the metric vs a fixed date.
+- [ ] (Deferred security) rotate the long-lived `api-access-user` `AKIA…` key / move Django to
+      the EC2 instance role — it sits in `prod.env` in plaintext. Separate effort.
+- [ ] Grace-period length and whether to drive Phase 6 (`DeleteTable` v1) off the metric vs a fixed date.
 
 ---
 

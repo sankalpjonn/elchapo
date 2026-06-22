@@ -8,3 +8,4 @@ zappa_settings_local.json
 *.zip
 .venv312/
 .venv-deploy/
+elchapo-*-template-*.json

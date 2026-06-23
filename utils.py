@@ -222,3 +222,19 @@ def add_minutes(date, minutes=0):
     if not isinstance(date, datetime):
         raise ValueError('date should be datetime')
     return date + timedelta(minutes=minutes)
+
+
+def to_epoch_seconds(dt):
+    """
+    epoch SECONDS (not milliseconds) for a tz-aware datetime.
+    NOTE: get_current_epoch() returns milliseconds and must NOT be used for
+    DynamoDB TTL, which requires seconds.
+    """
+    return int((dt - get_unix_start_time()).total_seconds())
+
+
+def ttl_epoch_seconds(now, days):
+    """
+    DynamoDB TTL value: epoch SECONDS at `now + days`.
+    """
+    return to_epoch_seconds(now) + days * 86400

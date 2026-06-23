@@ -1,0 +1,9 @@
+# Test-only tooling. Runtime deps live in requirements.txt (pynamodb 6.0.0 etc.).
+# Create an isolated env and run the suite:
+#   python3 -m venv .venv
+#   .venv/bin/pip install "pynamodb==6.0.0" "Flask==2.0.2" "Werkzeug==2.0.2" requests pytz python-dateutil
+#   .venv/bin/pip install -r requirements-test.txt
+#   .venv/bin/python -m pytest -q
+pytest>=7.4
+moto[dynamodb,cloudwatch]>=5.0
+boto3>=1.40

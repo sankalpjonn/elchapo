@@ -1,4 +1,7 @@
+import ipaddress
 import logging
+import socket
+from urllib.parse import urlparse
 
 import requests, os
 import boto3
@@ -64,9 +67,58 @@ def create_url():
         return "", 409
 
 
+def _is_safe_webhook_url(url: str) -> bool:
+    """Reject webhook URLs that target internal/private network hosts (SSRF guard).
+
+    Webhook URLs are attacker-controlled (set via POST /c with the secret key,
+    which defaults to a publicly-known value) and are fetched server-side, so we
+    must refuse anything that would reach loopback, RFC 1918, link-local or
+    other reserved ranges — including hostnames that resolve to them.
+    """
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    if parsed.scheme not in ("http", "https"):
+        return False
+    host = parsed.hostname
+    if not host:
+        return False
+
+    def _blocked(ip) -> bool:
+        return (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
+        )
+
+    # Literal IP address?
+    try:
+        return not _blocked(ipaddress.ip_address(host))
+    except ValueError:
+        pass
+
+    # Hostname — resolve it and verify no address points at a private target.
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        return False
+    for info in infos:
+        addr = info[4][0]
+        try:
+            if _blocked(ipaddress.ip_address(addr)):
+                return False
+        except ValueError:
+            continue
+    return True
+
+
 @task
 def call_url(url):
-    if url:
+    if url and _is_safe_webhook_url(url):
         retry = 3
         while retry > 0:
             x = requests.get(url)
